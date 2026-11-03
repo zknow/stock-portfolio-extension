@@ -42,7 +42,7 @@ function iconButton(label, name) {
 }
 
 /** F6 / F17：工具列的顯示面板。面板外點擊或 Esc 關閉 */
-export function createPopupToolbar({ onRefresh, onEdit, onDisplayChange, onCostChange }) {
+export function createPopupToolbar({ onRefresh, onEdit, onDisplayChange, onCostChange, onRebalanceChange }) {
   const toolbar = document.createElement('div')
   toolbar.className = 'toolbar'
 
@@ -100,14 +100,31 @@ export function createPopupToolbar({ onRefresh, onEdit, onDisplayChange, onCostC
   unitLabel.className = 'display-label'
   unitLabel.textContent = '單位'
 
+  const rebalanceOff = button('關', 'segmented-option')
+  const rebalanceOn = button('開', 'segmented-option')
+  const rebalanceOptions = new Map([
+    [false, rebalanceOff],
+    [true, rebalanceOn],
+  ])
+  const rebalanceControl = document.createElement('div')
+  rebalanceControl.className = 'segmented'
+  rebalanceControl.setAttribute('role', 'group')
+  rebalanceControl.setAttribute('aria-label', '再平衡')
+  rebalanceControl.append(rebalanceOff, rebalanceOn)
+
+  const rebalanceLabel = document.createElement('span')
+  rebalanceLabel.className = 'display-label'
+  rebalanceLabel.textContent = '再平衡'
+
   const grid = document.createElement('div')
   grid.className = 'display-grid'
-  grid.append(costLabel, costControl, unitLabel, unitControl)
+  grid.append(costLabel, costControl, unitLabel, unitControl, rebalanceLabel, rebalanceControl)
   panel.append(grid)
   displayMenu.append(trigger, panel)
 
   let showCost = true
   let display = 'rate'
+  let rebalance = false
 
   function closeDisplay() {
     if (panel.hidden) return
@@ -152,6 +169,23 @@ export function createPopupToolbar({ onRefresh, onEdit, onDisplayChange, onCostC
   amountOption.addEventListener('click', () => {
     if (display !== 'amount') onDisplayChange('amount')
   })
+  rebalanceOff.addEventListener('click', () => {
+    if (rebalance) onRebalanceChange(false)
+  })
+  rebalanceOn.addEventListener('click', () => {
+    if (!rebalance) onRebalanceChange(true)
+  })
+
+  function applyRebalance(next) {
+    rebalance = next
+    for (const [value, option] of rebalanceOptions) option.setAttribute('aria-pressed', String(value === next))
+    costLabel.hidden = next
+    costControl.hidden = next
+    unitLabel.hidden = next
+    unitControl.hidden = next
+  }
+
+  applyRebalance(false)
 
   const refreshButton = iconButton('重新抓取報價', 'refresh')
   refreshButton.addEventListener('click', () => onRefresh())
@@ -174,6 +208,9 @@ export function createPopupToolbar({ onRefresh, onEdit, onDisplayChange, onCostC
     setCost(next) {
       showCost = next
       for (const [value, option] of costOptions) option.setAttribute('aria-pressed', String(value === next))
+    },
+    setRebalance(next) {
+      applyRebalance(next)
     },
     setRefreshing(value) {
       refreshButton.disabled = value

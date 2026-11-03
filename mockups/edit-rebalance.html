@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Mockup · 編輯頁與權重設定</title>
+    <link rel="stylesheet" href="../extension/ui/theme.css" />
+    <style>
+      /* 僅供 mockup：頁籤與權重表格樣式 */
+      .tabs {
+        display: inline-flex;
+        overflow: hidden;
+        border: 1px solid var(--line-strong);
+        border-radius: 4px;
+      }
+
+      .tab {
+        padding: 3px 12px;
+        border: 0;
+        background: none;
+        color: var(--text-dim);
+        font: inherit;
+        font-size: var(--fs-label);
+        cursor: pointer;
+      }
+
+      .tab + .tab {
+        border-left: 1px solid var(--line-strong);
+      }
+
+      .tab:hover {
+        color: var(--text);
+      }
+
+      .tab[aria-selected='true'] {
+        background: var(--surface-raised);
+        color: var(--text);
+        box-shadow: inset 0 -2px 0 var(--accent);
+      }
+
+      .weight-table {
+        width: 100%;
+        table-layout: fixed;
+        border-collapse: collapse;
+      }
+
+      .weight-table td {
+        height: 38px;
+      }
+
+      .weight-input {
+        width: 76px;
+        text-align: right;
+      }
+
+      .cash-input {
+        width: 108px;
+        text-align: right;
+      }
+
+      .cash-row td {
+        background: var(--surface-raised);
+      }
+
+      .weight-table tfoot td {
+        padding: 7px var(--pad-x);
+        border-top: 1px solid var(--line-strong);
+        color: var(--text-dim);
+        font-size: var(--fs-label);
+      }
+
+      .weight-sum {
+        color: var(--text);
+        font-variant-numeric: tabular-nums;
+      }
+
+      .weight-sum.alert {
+        color: var(--warn);
+      }
+
+      .weight-warning {
+        margin: 0;
+        padding: 6px var(--pad-x) 10px;
+        color: var(--warn);
+        font-size: var(--fs-label);
+      }
+    </style>
+  </head>
+  <body class="edit">
+    <div class="app" id="app"></div>
+    <script type="module">
+      const holdings = [
+        { code: '2330', name: '台積電', shares: 1000, averageCost: 500 },
+        { code: '0050', name: '元大台灣50', shares: 2000, averageCost: 150 },
+        { code: '2454', name: '聯發科', shares: 500, averageCost: 800 },
+      ]
+
+      const weights = { '2330': 40, '0050': 30, '2454': 10 }
+      let cash = 50000
+      let cashWeight = new URLSearchParams(location.search).get('sum') === '90' ? 10 : 20
+
+      const root = document.querySelector('#app')
+
+      const toolbar = document.createElement('div')
+      toolbar.className = 'toolbar'
+
+      const title = document.createElement('h1')
+      title.textContent = '台股庫存 · 編輯'
+
+      const tabs = document.createElement('div')
+      tabs.className = 'tabs'
+      tabs.setAttribute('role', 'tablist')
+
+      for (const [key, label] of [
+        ['edit', '編輯'],
+        ['weight', '權重設定'],
+      ]) {
+        const tab = document.createElement('button')
+        tab.type = 'button'
+        tab.className = 'tab'
+        tab.dataset.tab = key
+        tab.setAttribute('role', 'tab')
+        tab.textContent = label
+        tab.addEventListener('click', () => selectTab(key))
+        tabs.append(tab)
+      }
+
+      const tally = document.createElement('span')
+      tally.className = 'tally'
+      tally.textContent = `共 ${holdings.length} 檔`
+
+      toolbar.append(title, tabs, tally)
+
+      const view = document.createElement('div')
+      root.append(toolbar, view)
+
+      function cell(text, className = '') {
+        const td = document.createElement('td')
+        td.className = className
+        td.textContent = text
+        return td
+      }
+
+      function span(text, className = '') {
+        const element = document.createElement('span')
+        element.className = className
+        element.textContent = text
+        return element
+      }
+
+      function field(labelText, control) {
+        const wrap = document.createElement('div')
+        wrap.className = 'field'
+        const label = document.createElement('label')
+        label.textContent = labelText
+        wrap.append(label, control)
+        return wrap
+      }
+
+      function textInput(value, width = '') {
+        const input = document.createElement('input')
+        input.type = 'text'
+        input.value = value
+        if (width !== '') input.style.width = width
+        return input
+      }
+
+      function buildAddForm() {
+        const form = document.createElement('form')
+        form.className = 'addform'
+        form.addEventListener('submit', (event) => event.preventDefault())
+
+        const row = document.createElement('div')
+        row.className = 'addform-row'
+
+        const nameField = document.createElement('div')
+        nameField.className = 'field'
+        const nameLabel = document.createElement('span')
+        nameLabel.className = 'label'
+        nameLabel.textContent = '名稱'
+        nameField.append(nameLabel, span('輸入代號後自動帶入', 'resolved'))
+
+        const submit = document.createElement('button')
+        submit.type = 'submit'
+        submit.className = 'primary'
+        submit.textContent = '新增'
+
+        row.append(
+          field('代號', textInput('', '84px')),
+          nameField,
+          field('股數', textInput('')),
+          field('平均成本', textInput('')),
+          submit,
+        )
+        form.append(row)
+        return form
+      }
+
+      function buildEditTable() {
+        const board = document.createElement('div')
+        board.className = 'board'
+
+        const table = document.createElement('table')
+        const colgroup = document.createElement('colgroup')
+        for (const width of ['96px', null, '130px', '140px', '200px']) {
+          const col = document.createElement('col')
+          if (width !== null) col.style.width = width
+          colgroup.append(col)
+        }
+
+        const head = document.createElement('thead')
+        const headRow = document.createElement('tr')
+        for (const label of ['代號', '名稱', '股數', '平均成本', '操作']) {
+          const th = document.createElement('th')
+          if (label === '股數' || label === '平均成本') th.className = 'numeric'
+          if (label === '操作') th.className = 'actions'
+          th.textContent = label
+          headRow.append(th)
+        }
+        head.append(headRow)
+
+        const body = document.createElement('tbody')
+        for (const holding of holdings) {
+          const tr = document.createElement('tr')
+          tr.append(
+            cell(holding.code),
+            cell(holding.name),
+            cell(holding.shares.toLocaleString('zh-Hant'), 'numeric'),
+            cell(holding.averageCost.toFixed(2), 'numeric'),
+          )
+          const actions = cell('', 'actions')
+          const remove = document.createElement('button')
+          remove.type = 'button'
+          remove.className = 'ghost'
+          remove.textContent = '刪除'
+          actions.append(remove)
+          tr.append(actions)
+          body.append(tr)
+        }
+
+        table.append(colgroup, head, body)
+        board.append(table)
+        return board
+      }
+
+      function buildWeightTable() {
+        const wrapper = document.createElement('div')
+
+        const board = document.createElement('div')
+        board.className = 'board'
+
+        const table = document.createElement('table')
+        table.className = 'weight-table'
+
+        const colgroup = document.createElement('colgroup')
+        for (const width of ['96px', null, '160px']) {
+          const col = document.createElement('col')
+          if (width !== null) col.style.width = width
+          colgroup.append(col)
+        }
+
+        const head = document.createElement('thead')
+        const headRow = document.createElement('tr')
+        for (const [label, className] of [
+          ['代號', ''],
+          ['名稱', ''],
+          ['目標權重', 'numeric'],
+        ]) {
+          const th = document.createElement('th')
+          th.className = className
+          th.textContent = label
+          headRow.append(th)
+        }
+        head.append(headRow)
+
+        const body = document.createElement('tbody')
+
+        for (const holding of holdings) {
+          const tr = document.createElement('tr')
+          tr.append(cell(holding.code), cell(holding.name))
+
+          const weightCell = cell('', 'numeric')
+          const weightInput = document.createElement('input')
+          weightInput.type = 'number'
+          weightInput.min = '0'
+          weightInput.max = '100'
+          weightInput.step = '0.1'
+          weightInput.className = 'weight-input'
+          weightInput.value = String(weights[holding.code] ?? 0)
+          weightInput.addEventListener('input', () => {
+            const value = Number(weightInput.value)
+            if (Number.isFinite(value)) {
+              weights[holding.code] = value
+              updateSum()
+            }
+          })
+          weightCell.append(weightInput, document.createTextNode(' %'))
+          tr.append(weightCell)
+          body.append(tr)
+        }
+
+        const cashRow = document.createElement('tr')
+        cashRow.className = 'cash-row'
+        cashRow.append(cell('—'))
+
+        const cashName = cell('')
+        cashName.append(document.createTextNode('現金 '))
+        const cashInput = document.createElement('input')
+        cashInput.type = 'number'
+        cashInput.min = '0'
+        cashInput.step = '1'
+        cashInput.className = 'cash-input'
+        cashInput.value = String(cash)
+        cashInput.addEventListener('input', () => {
+          const value = Number(cashInput.value)
+          if (Number.isFinite(value)) cash = value
+        })
+        cashName.append(cashInput, document.createTextNode(' 元'))
+        cashRow.append(cashName)
+
+        const cashWeightCell = cell('', 'numeric')
+        const cashWeightInput = document.createElement('input')
+        cashWeightInput.type = 'number'
+        cashWeightInput.min = '0'
+        cashWeightInput.max = '100'
+        cashWeightInput.step = '0.1'
+        cashWeightInput.className = 'weight-input'
+        cashWeightInput.value = String(cashWeight)
+        cashWeightInput.addEventListener('input', () => {
+          const value = Number(cashWeightInput.value)
+          if (Number.isFinite(value)) {
+            cashWeight = value
+            updateSum()
+          }
+        })
+        cashWeightCell.append(cashWeightInput, document.createTextNode(' %'))
+        cashRow.append(cashWeightCell)
+        body.append(cashRow)
+
+        const foot = document.createElement('tfoot')
+        const footRow = document.createElement('tr')
+        const footLabel = document.createElement('td')
+        footLabel.colSpan = 2
+        footLabel.textContent = '權重合計'
+        const footValue = document.createElement('td')
+        footValue.className = 'numeric'
+        const sumText = document.createElement('span')
+        sumText.className = 'weight-sum'
+        footValue.append(sumText)
+        footRow.append(footLabel, footValue)
+        foot.append(footRow)
+
+        table.append(colgroup, head, body, foot)
+        board.append(table)
+
+        const warning = document.createElement('p')
+        warning.className = 'weight-warning'
+        warning.textContent = '股票權重＋現金權重需為 100%'
+        warning.hidden = true
+
+        function updateSum() {
+          const sum = cashWeight + holdings.reduce((total, holding) => total + (weights[holding.code] ?? 0), 0)
+          sumText.textContent = `${sum.toFixed(1)}%`
+          const off = Math.abs(sum - 100) > 0.1
+          sumText.classList.toggle('alert', off)
+          warning.hidden = !off
+        }
+
+        updateSum()
+
+        wrapper.append(board, warning)
+        return wrapper
+      }
+
+      function renderEdit() {
+        view.replaceChildren(buildAddForm(), buildEditTable())
+      }
+
+      function renderWeight() {
+        view.replaceChildren(buildWeightTable())
+      }
+
+      function selectTab(name) {
+        for (const tab of tabs.children) {
+          tab.setAttribute('aria-selected', String(tab.dataset.tab === name))
+        }
+        if (name === 'edit') renderEdit()
+        else renderWeight()
+      }
+
+      selectTab(new URLSearchParams(location.search).get('tab') === 'weight' ? 'weight' : 'edit')
+    </script>
+  </body>
+</html>

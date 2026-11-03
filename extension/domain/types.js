@@ -18,5 +18,6 @@ export const SORT_KEYS = [
  * 加權指數：`{ price, previousClose, dataDate }`
  * 報價批次：`{ source, quotes, index, fetchedAt }`
  * 排序狀態：`{ key, direction }`
- * UI 偏好：`{ sortKey, sortDirection, returnDisplay, showCost }`
+ * UI 偏好：`{ sortKey, sortDirection, returnDisplay, showCost, rebalance }`
+ * 權重設定：`{ schemaVersion, cash, cashWeight, weights }`
  */

@@ -25,6 +25,11 @@ export function formatRate(value) {
   return `${value > 0 ? '+' : ''}${groupThousands(value * 100, 2)}%`
 }
 
+/** 目標權重與現況權重：固定一位小數加 % */
+export function formatWeight(value) {
+  return value === null ? MISSING : `${groupThousands(value, 1)}%`
+}
+
 /** 'up' | 'down' | 'flat' */
 export function directionOf(value) {
   if (value === null || value === 0) return 'flat'

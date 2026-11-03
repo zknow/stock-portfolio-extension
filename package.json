@@ -3,5 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "台股庫存檢視瀏覽器擴充功能"
+  "description": "台股庫存檢視瀏覽器擴充功能",
+  "scripts": {
+    "test": "node --test"
+  }
 }

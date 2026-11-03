@@ -3,17 +3,55 @@ import { SORT_KEYS } from '../domain/types.js'
 import { isValidCode, isValidCost, isValidShares } from '../domain/validate.js'
 
 export const SCHEMA_VERSION = 1
+export const TARGETS_SCHEMA_VERSION = 1
 
 export const PORTFOLIO_KEY = 'portfolio'
 export const PREFS_KEY = 'prefs'
 export const SYMBOLS_KEY = 'symbols'
 export const QUOTES_KEY = 'quotes'
+export const TARGETS_KEY = 'targets'
 
 export const DEFAULT_PREFS = {
   sortKey: 'marketValue',
   sortDirection: 'desc',
   returnDisplay: 'rate',
   showCost: true,
+  rebalance: false,
+}
+
+/** 權重資料預設值。`weights` 只存大於 0 的項目，0 視同未設定 */
+export function defaultTargets() {
+  return { schemaVersion: TARGETS_SCHEMA_VERSION, cash: 0, cashWeight: 0, weights: {} }
+}
+
+function readWeight(value) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null
+  if (value < 0 || value > 100) return null
+  return Math.round(value * 10) / 10
+}
+
+/** 缺欄位或不合法一律回預設；這是 targets 唯一的正規化邊界 */
+export function parseTargets(value) {
+  if (typeof value !== 'object' || value === null) return defaultTargets()
+
+  const version = typeof value.schemaVersion === 'number' ? value.schemaVersion : TARGETS_SCHEMA_VERSION
+  if (version > TARGETS_SCHEMA_VERSION) return defaultTargets()
+
+  const cash =
+    typeof value.cash === 'number' && Number.isFinite(value.cash) && value.cash >= 0 ? Math.round(value.cash) : 0
+  const cashWeight = readWeight(value.cashWeight) ?? 0
+
+  const weights = {}
+  if (typeof value.weights === 'object' && value.weights !== null && !Array.isArray(value.weights)) {
+    for (const [code, raw] of Object.entries(value.weights)) {
+      if (!isValidCode(code)) continue
+      const weight = readWeight(raw)
+      if (weight === null || weight === 0) continue
+      weights[code] = weight
+    }
+  }
+
+  return { schemaVersion: TARGETS_SCHEMA_VERSION, cash, cashWeight, weights }
 }
 
 function readHolding(value) {
@@ -49,6 +87,7 @@ export function readPrefs(value) {
     sortDirection: value.sortDirection === 'asc' ? 'asc' : 'desc',
     returnDisplay: value.returnDisplay === 'amount' ? 'amount' : 'rate',
     showCost: typeof value.showCost === 'boolean' ? value.showCost : DEFAULT_PREFS.showCost,
+    rebalance: typeof value.rebalance === 'boolean' ? value.rebalance : DEFAULT_PREFS.rebalance,
   }
 }
 
@@ -60,9 +99,9 @@ export function readQuotes(value) {
   return { source, quotes: value.quotes, index: value.index ?? null, fetchedAt: value.fetchedAt }
 }
 
-/** 回傳 `{ holdings, prefs, quotes, error }`。`error` 非 null 代表持股資料損毀，呼叫端不得覆寫 */
+/** 回傳 `{ holdings, prefs, quotes, targets, error }`。`error` 非 null 代表持股資料損毀，呼叫端不得覆寫 */
 export async function load() {
-  const stored = await chrome.storage.local.get([PORTFOLIO_KEY, PREFS_KEY, QUOTES_KEY])
+  const stored = await chrome.storage.local.get([PORTFOLIO_KEY, PREFS_KEY, QUOTES_KEY, TARGETS_KEY])
 
   let holdings = []
   let error = null
@@ -74,7 +113,13 @@ export async function load() {
     }
   }
 
-  return { holdings, prefs: readPrefs(stored[PREFS_KEY]), quotes: readQuotes(stored[QUOTES_KEY]), error }
+  return {
+    holdings,
+    prefs: readPrefs(stored[PREFS_KEY]),
+    quotes: readQuotes(stored[QUOTES_KEY]),
+    targets: parseTargets(stored[TARGETS_KEY]),
+    error,
+  }
 }
 
 export async function saveQuotes(batch) {
@@ -92,6 +137,11 @@ export async function savePrefs(prefs) {
       sortDirection: prefs.sortDirection,
       returnDisplay: prefs.returnDisplay,
       showCost: prefs.showCost,
+      rebalance: prefs.rebalance,
     },
   })
+}
+
+export async function saveTargets(targets) {
+  await chrome.storage.local.set({ [TARGETS_KEY]: parseTargets({ ...targets, schemaVersion: TARGETS_SCHEMA_VERSION }) })
 }

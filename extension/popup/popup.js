@@ -1,17 +1,22 @@
 import { isStale } from '../domain/quote.js'
 import { dateKey, errorText } from '../domain/time.js'
 import { computePnlRow, computeTotals } from '../domain/pnl.js'
+import { computeRebalance } from '../domain/rebalance.js'
 import { fetchBatch } from '../data/quotes.js'
 import {
   DEFAULT_PREFS,
   PORTFOLIO_KEY,
   PREFS_KEY,
+  TARGETS_KEY,
+  defaultTargets,
   load,
   parseHoldings,
+  parseTargets,
   readPrefs,
   saveQuotes,
   savePrefs,
 } from '../data/storage.js'
+import { createRebalanceTable } from '../ui/rebalanceTable.js'
 import { createStatusBar } from '../ui/statusBar.js'
 import { createTable, defaultDirection, mapSortKey, sortRows, visibleSortKey } from '../ui/table.js'
 import { createPopupToolbar } from '../ui/toolbar.js'
@@ -20,6 +25,7 @@ const root = document.querySelector('#app')
 if (root === null) throw new Error('#app not found')
 
 let holdings = []
+let targets = defaultTargets()
 let prefs = { ...DEFAULT_PREFS }
 /** 非 null 代表持股資料損毀，已停用偏好寫入 */
 let loadError = null
@@ -32,10 +38,21 @@ const toolbar = createPopupToolbar({
   onEdit: openEditPage,
   onDisplayChange: setDisplay,
   onCostChange: setCost,
+  onRebalanceChange: setRebalance,
 })
 root.append(toolbar.element)
 
-const table = createTable(root, { sort })
+const normalView = document.createElement('div')
+normalView.className = 'popup-view'
+
+const rebalanceView = document.createElement('div')
+rebalanceView.className = 'popup-view'
+
+root.append(normalView, rebalanceView)
+
+const table = createTable(normalView, { sort })
+const rebalanceTable = createRebalanceTable()
+rebalanceView.append(rebalanceTable.element)
 const statusBar = createStatusBar(root)
 
 function openEditPage() {
@@ -57,6 +74,15 @@ function render() {
     display: prefs.returnDisplay,
     showCost: prefs.showCost,
   })
+
+  rebalanceTable.render({
+    result: computeRebalance({ holdings, quotes, targets }),
+    loading: batch === null && fetchError === null,
+  })
+
+  normalView.hidden = prefs.rebalance
+  rebalanceView.hidden = !prefs.rebalance
+
   toolbar.setTally(`共 ${rows.length} 檔`)
 
   const today = dateKey(new Date())
@@ -87,6 +113,13 @@ function setDisplay(display) {
 function setCost(showCost) {
   prefs = { ...prefs, showCost, sortKey: visibleSortKey(prefs.sortKey, prefs.returnDisplay, showCost) }
   toolbar.setCost(showCost)
+  render()
+  void savePrefs(prefs)
+}
+
+function setRebalance(rebalance) {
+  prefs = { ...prefs, rebalance }
+  toolbar.setRebalance(rebalance)
   render()
   void savePrefs(prefs)
 }
@@ -122,10 +155,12 @@ function watchStorage() {
         return
       }
     }
+    if (changes[TARGETS_KEY] !== undefined) targets = parseTargets(changes[TARGETS_KEY].newValue)
     if (changes[PREFS_KEY] !== undefined) {
       prefs = readPrefs(changes[PREFS_KEY].newValue)
       toolbar.setDisplay(prefs.returnDisplay)
       toolbar.setCost(prefs.showCost)
+      toolbar.setRebalance(prefs.rebalance)
     }
     render()
   })
@@ -136,12 +171,14 @@ async function main() {
 
   const loaded = await load()
   holdings = loaded.holdings
+  targets = loaded.targets
   prefs = loaded.prefs
   batch = loaded.quotes
   loadError = loaded.error
 
   toolbar.setDisplay(prefs.returnDisplay)
   toolbar.setCost(prefs.showCost)
+  toolbar.setRebalance(prefs.rebalance)
   render()
 
   await refresh()

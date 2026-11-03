@@ -109,9 +109,6 @@ export function createAddForm({ exists, submit }) {
   const submitButton = button('新增', 'primary')
   submitButton.type = 'submit'
 
-  const cancelButton = button('取消', 'ghost')
-  cancelButton.addEventListener('click', () => close())
-
   const nameField = document.createElement('div')
   nameField.className = 'field'
   const nameLabel = document.createElement('span')
@@ -127,7 +124,6 @@ export function createAddForm({ exists, submit }) {
     labeled('股數', sharesInput),
     labeled('平均成本', costInput),
     submitButton,
-    cancelButton,
   )
 
   const form = document.createElement('form')
@@ -183,13 +179,8 @@ export function createAddForm({ exists, submit }) {
     showError(null)
   }
 
-  function open() {
-    reset()
+  function focus() {
     codeInput.focus()
-  }
-
-  function close() {
-    reset()
   }
 
   async function submitForm() {
@@ -206,7 +197,7 @@ export function createAddForm({ exists, submit }) {
     }
 
     reset()
-    codeInput.focus()
+    focus()
   }
 
   form.addEventListener('submit', (event) => {
@@ -216,7 +207,7 @@ export function createAddForm({ exists, submit }) {
   form.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
       event.preventDefault()
-      close()
+      reset()
     }
   })
 
@@ -246,8 +237,7 @@ export function createAddForm({ exists, submit }) {
 
   return {
     element: form,
-    open,
-    close,
+    focus,
     setTable(next) {
       table = next
       codeInput.disabled = false
@@ -255,7 +245,6 @@ export function createAddForm({ exists, submit }) {
     },
     setEnabled(enabled) {
       submitButton.disabled = !enabled
-      cancelButton.disabled = !enabled
     },
   }
 }

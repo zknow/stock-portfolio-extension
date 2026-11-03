@@ -1,6 +1,7 @@
 /* 台股庫存 —— 固定深色主題（F9）。
    紅綠只代表漲跌，採台股慣例紅漲綠跌；介面其他任何位置都不得出現紅或綠，
-   否則會被讀成漲跌。警示改用琥珀（--warn），互動焦點改用鋼藍（--accent）。
+   否則會被讀成漲跌。唯一例外是再平衡的「差額」欄：正紅、負綠，代表資產配置的增減。
+   警示改用琥珀（--warn），互動焦點改用鋼藍（--accent）。
    所有顏色都只由本檔的 CSS 變數提供（硬性約束 4）。 */
 
 :root {
@@ -151,6 +152,50 @@ body.edit .app {
   font-size: var(--fs-label);
 }
 
+/* 編輯頁頁籤：編輯 / 權重設定 */
+.tabs {
+  display: inline-flex;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+}
+
+.tab {
+  padding: 3px 12px;
+  border: 0;
+  background: none;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: var(--fs-label);
+  cursor: pointer;
+}
+
+.tab + .tab {
+  border-left: 1px solid var(--line-strong);
+}
+
+.tab:hover {
+  color: var(--text);
+}
+
+.tab[aria-selected='true'] {
+  background: var(--surface-raised);
+  color: var(--text);
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+/* 頁籤內容與 popup 的一般／再平衡表格：用 display: contents 維持原本的 flex 版面，
+   由 [hidden] 的 display: none !important 切換 */
+.tab-view,
+.popup-view {
+  display: contents;
+}
+
+/* edit 頁工具列沒有右側動作，檔數靠右平衡版面 */
+body.edit .tally {
+  margin-left: auto;
+}
+
 .actions-group {
   display: flex;
   align-items: center;
@@ -201,7 +246,7 @@ body.edit .app {
 
 .display-grid {
   display: grid;
-  grid-template-columns: 30px 86px;
+  grid-template-columns: auto 86px;
   column-gap: 8px;
   row-gap: 7px;
   align-items: center;
@@ -558,6 +603,68 @@ td.actions button {
   margin-left: 8px;
   color: var(--warn);
   font-size: var(--fs-label);
+}
+
+/* 權重設定表格 */
+.weight-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+
+.weight-table td {
+  height: 38px;
+}
+
+.weight-input {
+  width: 76px;
+  text-align: right;
+}
+
+.cash-input {
+  width: 108px;
+  text-align: right;
+}
+
+.cash-row td {
+  background: var(--surface-raised);
+}
+
+.weight-table tfoot td {
+  padding: 7px var(--pad-x);
+  border-top: 1px solid var(--line-strong);
+  color: var(--text-dim);
+  font-size: var(--fs-label);
+}
+
+.weight-sum {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.weight-sum.alert {
+  color: var(--warn);
+}
+
+.weight-warning {
+  margin: 0;
+  padding: 6px var(--pad-x) 10px;
+  color: var(--warn);
+  font-size: var(--fs-label);
+}
+
+/* 再平衡表格：差額是唯一允許紅綠的欄位，買賣字樣用鋼藍 */
+.rebalance-table th,
+.rebalance-table td {
+  white-space: nowrap;
+}
+
+.rebalance-table td.suggestion {
+  color: var(--accent);
+}
+
+.rebalance-table td.muted {
+  color: var(--text-faint);
 }
 
 /* F12 投組總計列 */

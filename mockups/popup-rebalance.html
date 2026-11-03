@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Mockup · popup 再平衡</title>
+    <link rel="stylesheet" href="../extension/ui/theme.css" />
+    <style>
+      /* 僅供 mockup：顯示面板第一欄加寬、再平衡表格樣式 */
+      .display-grid {
+        grid-template-columns: auto 86px;
+      }
+
+      .rebalance-table th,
+      .rebalance-table td {
+        white-space: nowrap;
+      }
+
+      .rebalance-table td.suggestion {
+        color: var(--accent);
+      }
+
+      .rebalance-table td.muted {
+        color: var(--text-faint);
+      }
+
+      .rebalance-table td.delta {
+        font-variant-numeric: tabular-nums;
+      }
+    </style>
+  </head>
+  <body class="popup">
+    <div class="app" id="app"></div>
+    <script type="module">
+      const holdings = [
+        { code: '2330', name: '台積電', shares: 1000, averageCost: 500, price: 600, previousClose: 585.37 },
+        { code: '0050', name: '元大台灣50', shares: 2000, averageCost: 150, price: 160, previousClose: 158.1 },
+        { code: '2454', name: '聯發科', shares: 500, averageCost: 800, price: 900, previousClose: 907.26 },
+      ]
+
+      let cash = 50000
+      let cashWeight = 20
+      const weights = { '2330': 40, '0050': 30, '2454': 10 }
+
+      const state = new URLSearchParams(location.search).get('state')
+      if (state === '90') cashWeight = 10
+      if (state === 'missing') holdings[2].missing = true
+
+      const root = document.querySelector('#app')
+
+      function div(className) {
+        const element = document.createElement('div')
+        element.className = className
+        return element
+      }
+
+      function span(text, className = '') {
+        const element = document.createElement('span')
+        element.className = className
+        element.textContent = text
+        return element
+      }
+
+      function button(text, className) {
+        const element = document.createElement('button')
+        element.type = 'button'
+        element.className = className
+        element.textContent = text
+        return element
+      }
+
+      function cell(text, className = '') {
+        const element = document.createElement('td')
+        element.className = className
+        element.textContent = text
+        return element
+      }
+
+      function icon(name) {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+        svg.setAttribute('viewBox', '0 0 16 16')
+        svg.setAttribute('fill', 'none')
+        svg.setAttribute('stroke', 'currentColor')
+        svg.setAttribute('stroke-width', '1.5')
+        svg.setAttribute('stroke-linecap', 'round')
+        svg.setAttribute('stroke-linejoin', 'round')
+        svg.setAttribute('aria-hidden', 'true')
+        svg.classList.add('icon')
+
+        const path = (d) => {
+          const element = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+          element.setAttribute('d', d)
+          return element
+        }
+
+        if (name === 'pencil') {
+          svg.append(path('M3 13l1-3 7-7 2 2-7 7-3 1z'), path('M9.5 4.5l2 2'))
+        } else if (name === 'refresh') {
+          svg.append(path('M13.5 8a5.5 5.5 0 1 1-1.7-4'), path('M13.5 2.5v3.2h-3.2'))
+        } else {
+          svg.append(path('M4 6.5l4 4 4-4'))
+        }
+        return svg
+      }
+
+      function iconButton(label, name) {
+        const element = button('', 'icon-button')
+        element.append(icon(name))
+        element.title = label
+        element.setAttribute('aria-label', label)
+        return element
+      }
+
+      function formatAmount(value) {
+        return Math.round(value).toLocaleString('zh-Hant')
+      }
+
+      function formatPrice(value) {
+        return value.toLocaleString('zh-Hant', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+      }
+
+      function formatWeight(value) {
+        return `${value.toFixed(1)}%`
+      }
+
+      function formatShares(value) {
+        return Math.round(value).toLocaleString('zh-Hant')
+      }
+
+      function signedAmount(value) {
+        if (Math.round(value) === 0) return 'NT$0'
+        return `${value > 0 ? '+' : '−'}NT$${formatAmount(Math.abs(value))}`
+      }
+
+      const normalRows = holdings.map((holding) => {
+        const value = holding.price * holding.shares
+        const totalReturn = (holding.price - holding.averageCost) * holding.shares
+        const totalRate = (holding.price - holding.averageCost) / holding.averageCost
+        const todayReturn = (holding.price - holding.previousClose) * holding.shares
+        const todayRate = (holding.price - holding.previousClose) / holding.previousClose
+        return { holding, value, totalReturn, totalRate, todayReturn, todayRate }
+      })
+
+      const normalTotal = normalRows.reduce(
+        (total, row) => ({
+          cost: total.cost + row.holding.averageCost * row.holding.shares,
+          value: total.value + row.value,
+          totalReturn: total.totalReturn + row.totalReturn,
+          todayReturn: total.todayReturn + row.todayReturn,
+          todayBase: total.todayBase + row.value - row.todayReturn,
+        }),
+        { cost: 0, value: 0, totalReturn: 0, todayReturn: 0, todayBase: 0 },
+      )
+
+      function computeRebalance() {
+        const rows = []
+        const missing = []
+        let stockValue = 0
+
+        for (const holding of holdings) {
+          const price = holding.missing ? null : holding.price ?? holding.previousClose ?? null
+          if (price === null) {
+            missing.push(holding.code)
+            rows.push({
+              kind: 'stock',
+              code: holding.code,
+              name: holding.name,
+              price: null,
+              value: null,
+              targetWeight: weights[holding.code] ?? 0,
+              currentWeight: null,
+              delta: null,
+              suggestedShares: null,
+              suggestedAmount: null,
+            })
+            continue
+          }
+
+          const value = price * holding.shares
+          stockValue += value
+          rows.push({
+            kind: 'stock',
+            code: holding.code,
+            name: holding.name,
+            price,
+            value,
+            targetWeight: weights[holding.code] ?? 0,
+            currentWeight: null,
+            delta: null,
+            suggestedShares: null,
+            suggestedAmount: null,
+          })
+        }
+
+        const total = stockValue + cash
+        const weightSum = cashWeight + holdings.reduce((sum, holding) => sum + (weights[holding.code] ?? 0), 0)
+        const canShowCurrent = missing.length === 0 && total > 0
+        const ok = missing.length === 0 && Math.abs(weightSum - 100) <= 0.1 && total > 0
+
+        if (canShowCurrent) {
+          for (const row of rows) row.currentWeight = row.value / total
+        }
+
+        if (ok) {
+          for (const row of rows) {
+            row.delta = (row.targetWeight / 100) * total - row.value
+            row.suggestedShares = Math.round(row.delta / row.price)
+            row.suggestedShares = Math.max(row.suggestedShares, -holdings.find((h) => h.code === row.code).shares)
+            row.suggestedAmount = row.suggestedShares * row.price
+          }
+        }
+
+        const cashRow = {
+          kind: 'cash',
+          code: null,
+          name: '現金',
+          price: null,
+          value: cash,
+          targetWeight: cashWeight,
+          currentWeight: canShowCurrent ? cash / total : null,
+          delta: ok ? (cashWeight / 100) * total - cash : null,
+          suggestedShares: null,
+          suggestedAmount: null,
+        }
+
+        if (ok) {
+          cashRow.suggestedAmount = -rows.reduce((sum, row) => sum + row.suggestedAmount, 0)
+        }
+
+        rows.sort((a, b) => Math.abs(b.delta ?? 0) - Math.abs(a.delta ?? 0))
+        rows.push(cashRow)
+
+        return { rows, total, stockValue, weightSum, missing, ok }
+      }
+
+      const rebalance = computeRebalance()
+
+      const toolbar = div('toolbar')
+      const title = document.createElement('h1')
+      title.textContent = '台股庫存'
+      const tally = span(`共 ${holdings.length} 檔`, 'tally')
+
+      const actions = div('actions-group')
+      const displayMenu = div('display-menu')
+      const trigger = button('顯示', 'ghost display-trigger')
+      trigger.setAttribute('aria-expanded', 'false')
+      const chevron = icon('chevron')
+      chevron.classList.add('display-chevron')
+      trigger.append(chevron)
+
+      const panel = div('display-panel')
+      panel.hidden = true
+      const grid = div('display-grid')
+
+      const costLabel = span('成本', 'display-label')
+      const costControl = div('segmented')
+      const costShow = button('顯示', 'segmented-option')
+      const costHide = button('隱藏', 'segmented-option')
+      costShow.setAttribute('aria-pressed', 'true')
+      costHide.setAttribute('aria-pressed', 'false')
+      costControl.append(costShow, costHide)
+
+      const unitLabel = span('單位', 'display-label')
+      const unitControl = div('segmented')
+      const rateOption = button('%', 'segmented-option')
+      const amountOption = button('NT$', 'segmented-option')
+      rateOption.setAttribute('aria-pressed', 'true')
+      amountOption.setAttribute('aria-pressed', 'false')
+      unitControl.append(rateOption, amountOption)
+
+      const rebalanceLabel = span('再平衡', 'display-label')
+      const rebalanceControl = div('segmented')
+      const rebalanceOff = button('關', 'segmented-option')
+      const rebalanceOn = button('開', 'segmented-option')
+      rebalanceOff.setAttribute('aria-pressed', 'true')
+      rebalanceOn.setAttribute('aria-pressed', 'false')
+      rebalanceControl.append(rebalanceOff, rebalanceOn)
+
+      grid.append(costLabel, costControl, unitLabel, unitControl, rebalanceLabel, rebalanceControl)
+      panel.append(grid)
+      displayMenu.append(trigger, panel)
+
+      actions.append(displayMenu, iconButton('重新抓取報價', 'refresh'), iconButton('編輯持股', 'pencil'))
+      toolbar.append(title, tally, actions)
+
+      const normalBoard = div('board')
+      const normalTable = document.createElement('table')
+      const normalColgroup = document.createElement('colgroup')
+      for (const width of [null, null, null, null, null, null, null]) {
+        const col = document.createElement('col')
+        if (width !== null) col.style.width = width
+        normalColgroup.append(col)
+      }
+      const normalHead = document.createElement('thead')
+      const normalHeadRow = document.createElement('tr')
+      for (const [label, className] of [
+        ['代號', ''],
+        ['名稱', ''],
+        ['股數', 'numeric'],
+        ['平均成本', 'numeric'],
+        ['現價', 'numeric'],
+        ['總報酬率', 'numeric'],
+        ['今日報酬率', 'numeric'],
+      ]) {
+        const th = document.createElement('th')
+        th.className = className
+        th.textContent = label
+        normalHeadRow.append(th)
+      }
+      normalHead.append(normalHeadRow)
+
+      const normalBody = document.createElement('tbody')
+      for (const row of normalRows) {
+        const tr = document.createElement('tr')
+        tr.append(
+          cell(row.holding.code),
+          cell(row.holding.name),
+          cell(formatShares(row.holding.shares), 'numeric'),
+          cell(formatPrice(row.holding.averageCost), 'numeric'),
+          cell(formatPrice(row.holding.price), `numeric ${row.holding.price >= row.holding.previousClose ? 'up' : 'down'}`),
+          cell(`${row.totalRate > 0 ? '+' : ''}${(row.totalRate * 100).toFixed(2)}%`, `numeric ${row.totalRate >= 0 ? 'up' : 'down'}`),
+          cell(`${row.todayRate > 0 ? '+' : ''}${(row.todayRate * 100).toFixed(2)}%`, `numeric ${row.todayRate >= 0 ? 'up' : 'down'}`),
+        )
+        normalBody.append(tr)
+      }
+      normalTable.append(normalColgroup, normalHead, normalBody)
+      normalBoard.append(normalTable)
+
+      const normalTotals = document.createElement('footer')
+      normalTotals.className = 'totals'
+      const normalPairs = [
+        ['總成本', `NT$${formatAmount(normalTotal.cost)}`],
+        ['總市值', `NT$${formatAmount(normalTotal.value)}`],
+        ['總報酬率', `${normalTotal.totalReturn > 0 ? '+' : ''}${((normalTotal.totalReturn / normalTotal.cost) * 100).toFixed(2)}%`],
+        ['今日報酬率', `${normalTotal.todayReturn > 0 ? '+' : ''}${((normalTotal.todayReturn / normalTotal.todayBase) * 100).toFixed(2)}%`],
+      ]
+      for (const [label, value] of normalPairs) {
+        const pair = div('pair')
+        pair.append(span(label, 'label'), span(value, 'value'))
+        normalTotals.append(pair)
+      }
+
+      const rebalanceBoard = div('board')
+      rebalanceBoard.hidden = true
+      const rebalanceTable = document.createElement('table')
+      rebalanceTable.className = 'rebalance-table'
+      const rebalanceHead = document.createElement('thead')
+      const rebalanceHeadRow = document.createElement('tr')
+      for (const [label, className] of [
+        ['代號', ''],
+        ['名稱', ''],
+        ['現值', 'numeric'],
+        ['目標權重', 'numeric'],
+        ['現況權重', 'numeric'],
+        ['差額', 'numeric'],
+        ['建議', 'suggestion'],
+      ]) {
+        const th = document.createElement('th')
+        th.className = className
+        th.textContent = label
+        rebalanceHeadRow.append(th)
+      }
+      rebalanceHead.append(rebalanceHeadRow)
+
+      const rebalanceBody = document.createElement('tbody')
+      for (const row of rebalance.rows) {
+        const tr = document.createElement('tr')
+        const isCash = row.kind === 'cash'
+        const suggestion = isCash
+          ? row.suggestedAmount === null
+            ? '—'
+            : Math.round(row.suggestedAmount) === 0
+              ? '不需調整'
+              : row.suggestedAmount > 0
+                ? `增加約 NT$${formatAmount(row.suggestedAmount)}`
+                : `減少約 NT$${formatAmount(Math.abs(row.suggestedAmount))}`
+          : row.suggestedShares === null
+            ? '—'
+            : row.suggestedShares === 0
+              ? '不需調整'
+              : row.suggestedShares > 0
+                ? `買 ${formatShares(row.suggestedShares)} 股`
+                : `賣 ${formatShares(Math.abs(row.suggestedShares))} 股`
+
+        tr.append(
+          cell(isCash ? '—' : row.code, isCash ? 'muted' : ''),
+          cell(row.name),
+          cell(row.value === null ? '—' : formatAmount(row.value), `numeric ${row.value === null ? 'muted' : ''}`),
+          cell(formatWeight(row.targetWeight), 'numeric'),
+          cell(row.currentWeight === null ? '—' : formatWeight(row.currentWeight * 100), `numeric ${row.currentWeight === null ? 'muted' : ''}`),
+          cell(
+            row.delta === null ? '—' : signedAmount(row.delta),
+            `numeric delta ${
+              row.delta === null
+                ? 'muted'
+                : Math.round(row.delta) > 0
+                  ? 'up'
+                  : Math.round(row.delta) < 0
+                    ? 'down'
+                    : 'flat'
+            }`,
+          ),
+          cell(suggestion, row.suggestedShares === null && row.suggestedAmount === null ? 'suggestion muted' : 'suggestion'),
+        )
+        rebalanceBody.append(tr)
+      }
+      rebalanceTable.append(rebalanceHead, rebalanceBody)
+      rebalanceBoard.append(rebalanceTable)
+
+      const rebalanceTotals = document.createElement('footer')
+      rebalanceTotals.className = 'totals'
+      rebalanceTotals.hidden = true
+
+      function renderRebalanceTotals() {
+        const pairs = [
+          ['總資產', `NT$${formatAmount(rebalance.total)}`],
+          ['股票市值', `NT$${formatAmount(rebalance.stockValue)}`],
+          ['現金', `NT$${formatAmount(cash)}`],
+          ['權重合計', formatWeight(rebalance.weightSum)],
+        ]
+        if (rebalance.missing.length > 0) pairs[0][0] = '總資產（已知）'
+        const parts = pairs.map(([label, value]) => {
+          const pair = div('pair')
+          pair.append(span(label, 'label'), span(value, 'value'))
+          return pair
+        })
+
+        const notes = div('notes')
+        if (rebalance.missing.length > 0) {
+          notes.append(span(`缺現價，無法計算：${rebalance.missing.join('、')}`, ''))
+        } else if (Math.abs(rebalance.weightSum - 100) > 0.1) {
+          notes.append(span(`權重合計 ${formatWeight(rebalance.weightSum)}，請調整為 100%`, ''))
+        }
+
+        rebalanceTotals.replaceChildren(...parts, ...(notes.childElementCount > 0 ? [notes] : []))
+      }
+
+      renderRebalanceTotals()
+
+      const status = document.createElement('footer')
+      status.className = 'status'
+      status.append(
+        span('更新於 14:30', ''),
+        span('MIS 即時', 'source'),
+      )
+      const index = div('index up')
+      index.append(span('加權指數', 'index-label'), span('23,456.78', 'index-price'), span('△123.45', ''), span('(+0.53%)', ''))
+      status.append(index)
+
+      root.append(toolbar, normalBoard, normalTotals, rebalanceBoard, rebalanceTotals, status)
+
+      function setRebalance(next) {
+        rebalanceOff.setAttribute('aria-pressed', String(!next))
+        rebalanceOn.setAttribute('aria-pressed', String(next))
+        costLabel.hidden = next
+        costControl.hidden = next
+        unitLabel.hidden = next
+        unitControl.hidden = next
+        normalBoard.hidden = next
+        normalTotals.hidden = next
+        rebalanceBoard.hidden = !next
+        rebalanceTotals.hidden = !next
+      }
+
+      rebalanceOff.addEventListener('click', () => setRebalance(false))
+      rebalanceOn.addEventListener('click', () => setRebalance(true))
+
+      function closePanel() {
+        panel.hidden = true
+        trigger.setAttribute('aria-expanded', 'false')
+      }
+
+      trigger.addEventListener('click', () => {
+        const open = panel.hidden
+        panel.hidden = !open
+        trigger.setAttribute('aria-expanded', String(open))
+      })
+
+      document.addEventListener('pointerdown', (event) => {
+        if (event.target instanceof Node && !displayMenu.contains(event.target)) closePanel()
+      })
+      document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') closePanel()
+      })
+
+      if (state === '90') setRebalance(true)
+      if (state === 'missing') setRebalance(true)
+      if (state === 'ok') setRebalance(true)
+
+      if (new URLSearchParams(location.search).get('panel') === '1') {
+        panel.hidden = false
+        trigger.setAttribute('aria-expanded', 'true')
+      }
+    </script>
+  </body>
+</html>

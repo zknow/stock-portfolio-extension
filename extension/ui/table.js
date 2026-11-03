@@ -172,7 +172,7 @@ function editableCell(row, edit, handlers, field) {
 
   if (draft === null) {
     const element = cell(text, 'numeric editable')
-    element.addEventListener('click', () => handlers.startEdit?.(row.holding.code))
+    element.addEventListener('click', () => handlers.startEdit?.(row.holding.code, field))
     return element
   }
 
