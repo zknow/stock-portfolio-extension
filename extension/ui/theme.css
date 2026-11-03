@@ -1,0 +1,684 @@
+/* 台股庫存 —— 固定深色主題（F9）。
+   紅綠只代表漲跌，採台股慣例紅漲綠跌；介面其他任何位置都不得出現紅或綠，
+   否則會被讀成漲跌。警示改用琥珀（--warn），互動焦點改用鋼藍（--accent）。
+   所有顏色都只由本檔的 CSS 變數提供（硬性約束 4）。 */
+
+:root {
+  color-scheme: dark;
+
+  --bg: #0d1416;
+  --surface: #131c1f;
+  --surface-raised: #1a2529;
+  --line: #243135;
+  --line-strong: #32454a;
+  --hover: rgba(255, 255, 255, 0.035);
+  --shadow: rgba(0, 0, 0, 0.45);
+
+  --text: #e4edef;
+  --text-dim: #8fa5ac;
+  --text-faint: #6b8288;
+
+  --up: #f0574a;
+  --down: #34bf8f;
+  --warn: #e3a93c;
+  --accent: #6fa8c0;
+
+  --font-ui: 'Segoe UI', 'Microsoft JhengHei', system-ui, sans-serif;
+
+  --fs-label: 11px;
+  --fs-cell: 12px;
+  --fs-title: 14px;
+  --row-height: 28px;
+  --pad-x: 8px;
+  --pad-y: 6px;
+
+  --scroll-thumb: rgba(255, 255, 255, 0.28);
+  --scroll-track: transparent;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+html {
+  scrollbar-color: var(--scroll-thumb) var(--scroll-track);
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: var(--fs-cell);
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* popup：寬度由內容決定，高度固定，使用者不能拖 */
+body.popup {
+  width: max-content;
+  min-width: 360px;
+  max-width: 800px;
+  height: 420px;
+  overflow: hidden;
+}
+
+/* edit 頁：整頁，內容置中，捲動交給頁面本身 */
+body.edit {
+  overflow-y: auto;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+body.edit .app {
+  max-width: 760px;
+  min-height: 100vh;
+  margin: 0 auto;
+  border-inline: 1px solid var(--line);
+}
+
+/* 按鈕 */
+.ghost,
+.primary {
+  padding: 3px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  background: none;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: var(--fs-label);
+  cursor: pointer;
+}
+
+.ghost:hover:not(:disabled),
+.primary:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.primary {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.ghost:disabled,
+.primary:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.default {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+/* 工具列 */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+  padding: 10px var(--pad-x);
+  border-bottom: 1px solid var(--line);
+}
+
+.toolbar h1 {
+  margin: 0;
+  font-size: var(--fs-title);
+  font-weight: 600;
+}
+
+.tally {
+  color: var(--text-faint);
+  font-size: var(--fs-label);
+}
+
+.actions-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+/* F6 / F17：顯示面板 */
+.display-menu {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.display-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.display-chevron {
+  width: 10px;
+  height: 10px;
+  transition: transform 120ms ease;
+}
+
+.display-trigger[aria-expanded='true'] .display-chevron {
+  transform: rotate(180deg);
+}
+
+.display-trigger[aria-expanded='true'] {
+  border-color: var(--accent);
+  background: var(--surface-raised);
+  color: var(--text);
+}
+
+.display-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 4;
+  padding: 8px 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--surface);
+  box-shadow: 0 12px 34px var(--shadow);
+}
+
+.display-grid {
+  display: grid;
+  grid-template-columns: 30px 86px;
+  column-gap: 8px;
+  row-gap: 7px;
+  align-items: center;
+}
+
+.display-label {
+  color: var(--text-dim);
+  font-size: var(--fs-label);
+  white-space: nowrap;
+}
+
+.segmented {
+  display: inline-flex;
+  width: 86px;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+}
+
+.segmented-option {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 0;
+  border: 0;
+  background: none;
+  color: var(--text-faint);
+  font: inherit;
+  font-size: var(--fs-label);
+  line-height: 1.45;
+  text-align: center;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.segmented-option:hover {
+  color: var(--text);
+}
+
+.segmented-option[aria-pressed='true'] {
+  background: var(--surface-raised);
+  color: var(--text);
+}
+
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  background: none;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.icon-button:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.icon-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.icon-button .icon {
+  width: 14px;
+  height: 14px;
+}
+
+.icon-button.spinning .icon {
+  animation: spin 900ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* 新增表單（edit 頁） */
+.addform {
+  flex: none;
+  padding: var(--pad-y) var(--pad-x);
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.addform-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.addform-row + .addform-row {
+  margin-top: 8px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.field label,
+.field .label {
+  color: var(--text-dim);
+  font-size: var(--fs-label);
+}
+
+input,
+select {
+  padding: 3px 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-label);
+}
+
+input:disabled {
+  opacity: 0.6;
+}
+
+.addform input {
+  width: 110px;
+}
+
+#add-code {
+  width: 84px;
+}
+
+.resolved {
+  color: var(--text-dim);
+  font-size: var(--fs-label);
+}
+
+.resolved.alert {
+  color: var(--warn);
+}
+
+.form-error {
+  margin: 8px 0 0;
+  color: var(--warn);
+  font-size: var(--fs-label);
+}
+
+/* 表格 */
+.board {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+body.edit .board {
+  overflow-y: visible;
+}
+
+body.popup table {
+  width: auto;
+  table-layout: auto;
+}
+
+body.popup .name-text {
+  display: block;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 終端機分區：三區各自一張卡片，工具列頂端鋼藍線 */
+body.popup .app {
+  gap: 8px;
+  padding: 8px;
+}
+
+body.popup .toolbar,
+body.popup .board,
+body.popup .totals {
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+body.popup .toolbar {
+  border-top: 2px solid var(--accent);
+}
+
+body.popup .totals {
+  background: var(--surface-raised);
+  font-variant-numeric: tabular-nums;
+}
+
+table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+
+thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 6px var(--pad-x);
+  border-bottom: 1px solid var(--line-strong);
+  background: var(--surface);
+  color: var(--text-dim);
+  font-size: var(--fs-label);
+  font-weight: 500;
+  text-align: left;
+  white-space: nowrap;
+}
+
+th.numeric,
+td.numeric {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+th button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+}
+
+th button:hover {
+  color: var(--text);
+}
+
+/* 一律保留指示符的寬度，欄頭不會因排序跳動 */
+th button::after {
+  content: '';
+  width: 1em;
+  text-align: center;
+}
+
+/* 數字欄靠右對齊：指示符改放標籤左側，標籤右緣才與數值同邊 */
+th.numeric button::after {
+  order: -1;
+}
+
+th[aria-sort] button {
+  color: var(--text);
+}
+
+th[aria-sort='ascending'] button::after {
+  content: '▴';
+}
+
+th[aria-sort='descending'] button::after {
+  content: '▾';
+}
+
+tbody td {
+  height: var(--row-height);
+  padding: 0 var(--pad-x);
+  border-bottom: 1px solid var(--line);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+tbody tr:hover td:not(.empty) {
+  background: var(--hover);
+}
+
+tbody tr.untraded td {
+  color: var(--text-faint);
+}
+
+.up {
+  color: var(--up);
+}
+
+.down {
+  color: var(--down);
+}
+
+.flat {
+  color: var(--text);
+}
+
+.missing {
+  color: var(--text-faint);
+}
+
+.arrow {
+  margin-right: 4px;
+  font-size: 0.75em;
+}
+
+.empty {
+  padding: 48px var(--pad-x) !important;
+  color: var(--text-faint);
+  text-align: center;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  white-space: normal !important;
+}
+
+.empty-title {
+  display: block;
+}
+
+.empty-hint {
+  display: block;
+  margin-top: 6px;
+}
+
+.empty button {
+  margin-top: 12px;
+}
+
+/* 就地編輯 */
+td.editable {
+  border-bottom: 1px dashed var(--line-strong);
+  cursor: pointer;
+}
+
+td.editable:hover {
+  background: var(--hover);
+  color: var(--accent);
+}
+
+.cell-input {
+  width: 100%;
+  text-align: right;
+}
+
+td.actions,
+th.actions {
+  text-align: right;
+}
+
+td.actions button {
+  margin-left: 6px;
+}
+
+.row-error {
+  margin-left: 8px;
+  color: var(--warn);
+  font-size: var(--fs-label);
+}
+
+/* F12 投組總計列 */
+.totals {
+  display: grid;
+  grid-template-columns: auto auto;
+  justify-content: start;
+  align-items: baseline;
+  column-gap: 18px;
+  flex: none;
+  padding: 5px var(--pad-x);
+  border-top: 1px solid var(--line-strong);
+  background: var(--surface-raised);
+  overflow: hidden;
+}
+
+.pair {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  white-space: nowrap;
+}
+
+.pair .label {
+  color: var(--text-dim);
+  font-size: var(--fs-label);
+}
+
+.pair .value {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.notes {
+  display: flex;
+  gap: 14px;
+  grid-column: 1 / -1;
+  margin-left: auto;
+  color: var(--warn);
+  font-size: var(--fs-label);
+  white-space: nowrap;
+}
+
+/* F15 狀態列 */
+.status {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  flex: none;
+  padding: 6px var(--pad-x);
+  border-top: 1px solid var(--line);
+  color: var(--text-faint);
+  font-size: var(--fs-label);
+}
+
+.status .source {
+  color: var(--text-dim);
+}
+
+.status .index {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 7px;
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.status .index-label {
+  color: var(--text-dim);
+}
+
+.status .index-price {
+  color: var(--text);
+}
+
+.status .alert {
+  color: var(--warn);
+}
+
+/* 二次確認 modal（取代桌面版的原生對話框） */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.modal {
+  min-width: 280px;
+  max-width: 420px;
+  padding: 18px var(--pad-x) 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 24px 60px var(--shadow);
+}
+
+.modal h2 {
+  margin: 0 0 6px;
+  font-size: var(--fs-cell);
+  font-weight: 600;
+}
+
+.modal p {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: var(--fs-label);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.modal-danger {
+  border-color: var(--warn);
+  color: var(--text);
+}

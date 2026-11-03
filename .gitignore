@@ -1,0 +1,9 @@
+# 依賴
+node_modules/
+
+# 測試
+coverage/
+
+# 編輯器
+.vscode/
+.idea/
