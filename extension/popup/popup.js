@@ -1,5 +1,4 @@
-import { isStale } from '../domain/quote.js'
-import { dateKey, errorText } from '../domain/time.js'
+import { errorText, latestDataAt } from '../domain/time.js'
 import { computePnlRow, computeTotals } from '../domain/pnl.js'
 import { computeRebalance } from '../domain/rebalance.js'
 import { fetchBatch } from '../data/quotes.js'
@@ -85,11 +84,10 @@ function render() {
 
   toolbar.setTally(`共 ${rows.length} 檔`)
 
-  const today = dateKey(new Date())
   statusBar.render({
     fetchedAt: batch?.fetchedAt ?? null,
     source: batch?.source ?? null,
-    stale: batch !== null && batch.quotes.some((quote) => isStale(quote.dataDate, today)),
+    dataAt: latestDataAt(batch?.quotes ?? []),
     error: loadError ?? fetchError,
     index: batch?.index ?? null,
   })

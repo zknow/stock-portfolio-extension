@@ -15,11 +15,8 @@ export function buildQuote(input) {
     previousClose: input.previousClose,
     traded: input.price !== null,
     dataDate: input.dataDate,
+    dataTime: input.dataTime,
   }
-}
-
-export function isStale(dataDate, today) {
-  return dataDate !== today
 }
 
 /** 回傳 targets 中沒有對應報價的代號。來源對查無資料會回傳佔位物件，解析後已被略過 */

@@ -16,7 +16,7 @@ export function indexSummary(index) {
   return { price, change: `${arrow}${formatPrice(Math.abs(change))}`, rate, direction }
 }
 
-const SOURCE_LABEL = { mis: 'MIS 即時', yahoo: 'Yahoo（延遲約 20 分）' }
+const SOURCE_LABEL = { mis: 'MIS 即時', yahoo: 'Yahoo' }
 
 function span(text, className) {
   const element = document.createElement('span')
@@ -25,23 +25,21 @@ function span(text, className) {
   return element
 }
 
-/** F15：更新時間、來源、非當日資料、錯誤，右側加權指數 */
+/** F15：更新時間、來源、資料時間、錯誤，右側加權指數 */
 export function createStatusBar(host) {
   const bar = document.createElement('footer')
   bar.className = 'status'
   host.append(bar)
 
   return {
-    render({ fetchedAt, source, stale, error, index }) {
+    render({ fetchedAt, source, dataAt, error, index }) {
       const parts = []
 
       if (fetchedAt !== null) {
         parts.push(span(`更新於 ${timeText(new Date(fetchedAt))}`, ''))
       }
-      if (source !== null) {
-        parts.push(span(SOURCE_LABEL[source], source === 'yahoo' ? 'alert' : 'source'))
-      }
-      if (stale) parts.push(span('非當日資料', 'alert'))
+      if (source !== null) parts.push(span(SOURCE_LABEL[source], 'source'))
+      if (dataAt !== null) parts.push(span(`資料時間 ${dataAt}`, ''))
       if (error !== null) parts.push(span(error, 'alert'))
 
       const summary = indexSummary(index)

@@ -1,5 +1,5 @@
 import { buildQuote, codesWithoutQuote, parsePrice } from '../domain/quote.js'
-import { dateKey, errorText } from '../domain/time.js'
+import { dateKey, errorText, timeText } from '../domain/time.js'
 import { fetchText } from './http.js'
 
 export const MIS_ENDPOINT = 'https://mis.twse.com.tw/stock/api/getStockInfo.jsp'
@@ -63,6 +63,7 @@ export function parseMisResponse(body) {
         price: priceOf(entry),
         previousClose: parsePrice(text(entry.y)),
         dataDate: text(entry.d),
+        dataTime: text(entry.t),
       }),
     )
   }
@@ -103,14 +104,15 @@ export function parseChartResponse(body, code) {
   if (meta === null) return null
 
   const marketTime = meta.regularMarketTime
-  const dataDate =
-    typeof marketTime === 'number' ? dateKey(new Date(marketTime * 1000)) : dateKey(new Date())
+  const marketDate = typeof marketTime === 'number' ? new Date(marketTime * 1000) : null
+  const dataDate = marketDate === null ? dateKey(new Date()) : dateKey(marketDate)
 
   return buildQuote({
     code,
     price: parsePrice(meta.regularMarketPrice),
     previousClose: parsePrice(meta.chartPreviousClose),
     dataDate,
+    dataTime: marketDate === null ? '' : timeText(marketDate),
   })
 }
 

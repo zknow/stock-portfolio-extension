@@ -14,7 +14,7 @@ export const SORT_KEYS = [
 
 /**
  * 持股：`{ code, name, market, shares, averageCost }`
- * 報價：`{ code, price, valuationPrice, previousClose, traded, dataDate }`
+ * 報價：`{ code, price, valuationPrice, previousClose, traded, dataDate, dataTime }`
  * 加權指數：`{ price, previousClose, dataDate }`
  * 報價批次：`{ source, quotes, index, fetchedAt }`
  * 排序狀態：`{ key, direction }`

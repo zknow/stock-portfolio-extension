@@ -184,10 +184,11 @@ body.edit .app {
   box-shadow: inset 0 -2px 0 var(--accent);
 }
 
-/* 頁籤內容與 popup 的一般／再平衡表格：用 display: contents 維持原本的 flex 版面，
-   由 [hidden] 的 display: none !important 切換 */
+/* 頁籤與 popup 視圖的包裝層不參與版面，子元素才能套用 .board 的 flex: 1 */
 .tab-view,
-.popup-view {
+.popup-view,
+.rebalance-view,
+.weight-view {
   display: contents;
 }
 
@@ -411,7 +412,7 @@ body.edit .board {
 }
 
 body.popup table {
-  width: auto;
+  width: 100%;
   table-layout: auto;
 }
 
@@ -700,12 +701,12 @@ td.actions button {
 
 .notes {
   display: flex;
-  gap: 14px;
+  flex-wrap: wrap;
+  gap: 4px 14px;
   grid-column: 1 / -1;
   margin-left: auto;
   color: var(--warn);
   font-size: var(--fs-label);
-  white-space: nowrap;
 }
 
 /* F15 狀態列 */

@@ -66,7 +66,6 @@ function cashSuggestion(row) {
 function noteFor(result) {
   if (result.reason === 'missing-quotes') return `缺現價，無法計算：${result.missing.join('、')}`
   if (result.reason === 'weight-sum') return `權重合計 ${formatWeight(result.weightSum)}，請調整為 100%`
-  if (result.reason === 'no-weights') return '尚未設定權重，請到編輯頁的權重設定'
   if (result.reason === 'no-assets') return '總資產為 0，無法計算'
   return null
 }
