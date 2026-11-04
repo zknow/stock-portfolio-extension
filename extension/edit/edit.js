@@ -1,20 +1,24 @@
+import { applyOrder, moveCode } from '../domain/order.js'
 import { computePnlRow } from '../domain/pnl.js'
 import { errorText } from '../domain/time.js'
 import { isValidCost, isValidShares } from '../domain/validate.js'
 import {
   PORTFOLIO_KEY,
   TARGETS_KEY,
+  ORDER_KEY,
   defaultTargets,
   load,
   parseHoldings,
+  parseOrder,
   parseTargets,
   saveHoldings,
+  saveOrder,
   saveTargets,
 } from '../data/storage.js'
 import { ensureFresh } from '../data/symbols.js'
 import { createAddForm, parseNumber } from '../ui/addForm.js'
 import { confirmAction } from '../ui/confirm.js'
-import { createTable } from '../ui/table.js'
+import { createTable, defaultDirection, sortRows } from '../ui/table.js'
 import { createWeightTable } from '../ui/weightTable.js'
 
 const root = document.querySelector('#app')
@@ -31,6 +35,10 @@ let saveError = null
 let writing = false
 /** 目前頁籤：'edit' | 'weight'，不持久化 */
 let tab = 'edit'
+/** 成本頁排序，權重頁沿用同一順序，不持久化 */
+let sort = { key: 'manual', direction: 'asc' }
+/** 手動順序的代號清單 */
+let order = []
 
 const toolbar = document.createElement('div')
 toolbar.className = 'toolbar'
@@ -44,8 +52,8 @@ tabs.setAttribute('role', 'tablist')
 
 const tabButtons = new Map()
 for (const [key, label] of [
-  ['edit', '編輯'],
-  ['weight', '權重設定'],
+  ['edit', '成本'],
+  ['weight', '權重'],
 ]) {
   const element = document.createElement('button')
   element.type = 'button'
@@ -89,14 +97,45 @@ const table = createTable(editView, {
   cancelEdit,
   remove: (code) => void remove(code),
   requestAdd: () => addForm.focus(),
+  sort: sortBy,
+  reorder,
 })
 
-const weightTable = createWeightTable({ onChange: (next) => void saveWeights(next) })
+const weightTable = createWeightTable({
+  onChange: (next) => void saveWeights(next),
+  onReorder: (from, to) => void reorder(from, to),
+})
 weightView.append(weightTable.element)
 
 function renderSaveError() {
   saveErrorText.textContent = saveError ?? (loadError === null ? '' : `無法讀取持股資料：${loadError}`)
   saveErrorText.hidden = saveError === null && loadError === null
+}
+
+function shownRows() {
+  const rows = applyOrder(holdings, order).map((holding) => computePnlRow(holding, null))
+  return sortRows(rows, sort.key, sort.direction)
+}
+
+/** 拖曳排序：以目前畫面順序為基礎移動，結果存為手動排序 */
+async function reorder(fromCode, toCode) {
+  order = moveCode(shownRows().map((row) => row.holding.code), fromCode, toCode)
+  sort = { key: 'manual', direction: 'asc' }
+  writing = true
+  try {
+    await saveOrder(order)
+  } catch (failure) {
+    console.warn('排序儲存失敗', failure)
+  } finally {
+    writing = false
+  }
+  render()
+}
+
+function sortBy(key) {
+  const direction = sort.key === key ? (sort.direction === 'asc' ? 'desc' : 'asc') : defaultDirection(key)
+  sort = { key, direction }
+  render()
 }
 
 function selectTab(next) {
@@ -105,17 +144,19 @@ function selectTab(next) {
 }
 
 function render() {
+  const rows = shownRows()
   table.render({
-    rows: holdings.map((holding) => computePnlRow(holding, null)),
+    rows,
     totals: null,
-    sort: { key: 'code', direction: 'asc' },
+    sort,
     mode: 'edit',
     draft,
     error: editError,
     display: 'rate',
     showCost: true,
+    cash: { value: targets.cash, disabled: loadError !== null, onChange: (text) => void saveCash(text) },
   })
-  weightTable.render({ holdings, targets, disabled: loadError !== null })
+  weightTable.render({ holdings: rows.map((row) => row.holding), targets, disabled: loadError !== null })
   tally.textContent = `共 ${holdings.length} 檔`
   editView.hidden = tab !== 'edit'
   weightView.hidden = tab !== 'weight'
@@ -157,6 +198,18 @@ async function saveWeights(next) {
     writing = false
   }
   renderSaveError()
+}
+
+/** 現金金額變更：驗證後寫入，無效輸入時還原輸入框 */
+async function saveCash(text) {
+  const value = Number(text)
+  if (text === '' || !Number.isFinite(value) || value < 0) {
+    saveError = '現金金額必須是 0 以上的數字'
+    render()
+    return
+  }
+  await saveWeights({ ...targets, cash: Math.round(value) })
+  render()
 }
 
 /** 刪除持股後清掉對應權重；失敗只記 console，不影響刪除結果 */
@@ -291,7 +344,8 @@ function watchStorage() {
       }
     }
     if (changes[TARGETS_KEY] !== undefined) targets = parseTargets(changes[TARGETS_KEY].newValue)
-    if (changes[PORTFOLIO_KEY] !== undefined || changes[TARGETS_KEY] !== undefined) render()
+    if (changes[ORDER_KEY] !== undefined) order = parseOrder(changes[ORDER_KEY].newValue)
+    if (changes[PORTFOLIO_KEY] !== undefined || changes[TARGETS_KEY] !== undefined || changes[ORDER_KEY] !== undefined) render()
   })
 }
 
@@ -301,6 +355,7 @@ async function main() {
   const loaded = await load()
   holdings = loaded.holdings
   targets = loaded.targets
+  order = loaded.order
   loadError = loaded.error
   render()
 

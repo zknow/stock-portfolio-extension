@@ -10,6 +10,7 @@ export const PREFS_KEY = 'prefs'
 export const SYMBOLS_KEY = 'symbols'
 export const QUOTES_KEY = 'quotes'
 export const TARGETS_KEY = 'targets'
+export const ORDER_KEY = 'order'
 
 export const DEFAULT_PREFS = {
   sortKey: 'marketValue',
@@ -21,7 +22,7 @@ export const DEFAULT_PREFS = {
 
 /** 權重資料預設值。`weights` 只存大於 0 的項目，0 視同未設定 */
 export function defaultTargets() {
-  return { schemaVersion: TARGETS_SCHEMA_VERSION, cash: 0, cashWeight: 0, weights: {} }
+  return { schemaVersion: TARGETS_SCHEMA_VERSION, cash: 0, weights: {} }
 }
 
 function readWeight(value) {
@@ -39,8 +40,6 @@ export function parseTargets(value) {
 
   const cash =
     typeof value.cash === 'number' && Number.isFinite(value.cash) && value.cash >= 0 ? Math.round(value.cash) : 0
-  const cashWeight = readWeight(value.cashWeight) ?? 0
-
   const weights = {}
   if (typeof value.weights === 'object' && value.weights !== null && !Array.isArray(value.weights)) {
     for (const [code, raw] of Object.entries(value.weights)) {
@@ -51,7 +50,7 @@ export function parseTargets(value) {
     }
   }
 
-  return { schemaVersion: TARGETS_SCHEMA_VERSION, cash, cashWeight, weights }
+  return { schemaVersion: TARGETS_SCHEMA_VERSION, cash, weights }
 }
 
 function readHolding(value) {
@@ -91,6 +90,16 @@ export function readPrefs(value) {
   }
 }
 
+/** 手動排序的代號清單；非陣列、不合法或重複的代號會被略過 */
+export function parseOrder(value) {
+  if (!Array.isArray(value)) return []
+  const codes = []
+  for (const code of value) {
+    if (typeof code === 'string' && isValidCode(code) && !codes.includes(code)) codes.push(code)
+  }
+  return codes
+}
+
 /** 缺欄位或型別不符回 null，呼叫端視為沒有快取 */
 export function readQuotes(value) {
   if (typeof value !== 'object' || value === null) return null
@@ -99,9 +108,9 @@ export function readQuotes(value) {
   return { source, quotes: value.quotes, index: value.index ?? null, fetchedAt: value.fetchedAt }
 }
 
-/** 回傳 `{ holdings, prefs, quotes, targets, error }`。`error` 非 null 代表持股資料損毀，呼叫端不得覆寫 */
+/** 回傳 `{ holdings, prefs, quotes, targets, order, error }`。`error` 非 null 代表持股資料損毀，呼叫端不得覆寫 */
 export async function load() {
-  const stored = await chrome.storage.local.get([PORTFOLIO_KEY, PREFS_KEY, QUOTES_KEY, TARGETS_KEY])
+  const stored = await chrome.storage.local.get([PORTFOLIO_KEY, PREFS_KEY, QUOTES_KEY, TARGETS_KEY, ORDER_KEY])
 
   let holdings = []
   let error = null
@@ -118,6 +127,7 @@ export async function load() {
     prefs: readPrefs(stored[PREFS_KEY]),
     quotes: readQuotes(stored[QUOTES_KEY]),
     targets: parseTargets(stored[TARGETS_KEY]),
+    order: parseOrder(stored[ORDER_KEY]),
     error,
   }
 }
@@ -140,6 +150,10 @@ export async function savePrefs(prefs) {
       rebalance: prefs.rebalance,
     },
   })
+}
+
+export async function saveOrder(order) {
+  await chrome.storage.local.set({ [ORDER_KEY]: order })
 }
 
 export async function saveTargets(targets) {

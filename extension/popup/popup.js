@@ -1,5 +1,6 @@
 import { errorText, latestDataAt } from '../domain/time.js'
 import { computePnlRow, computeTotals } from '../domain/pnl.js'
+import { applyOrder, moveCode } from '../domain/order.js'
 import { computeRebalance } from '../domain/rebalance.js'
 import { fetchBatch } from '../data/quotes.js'
 import {
@@ -9,9 +10,12 @@ import {
   TARGETS_KEY,
   defaultTargets,
   load,
+  ORDER_KEY,
   parseHoldings,
+  parseOrder,
   parseTargets,
   readPrefs,
+  saveOrder,
   saveQuotes,
   savePrefs,
 } from '../data/storage.js'
@@ -25,6 +29,7 @@ if (root === null) throw new Error('#app not found')
 
 let holdings = []
 let targets = defaultTargets()
+let order = []
 let prefs = { ...DEFAULT_PREFS }
 /** 非 null 代表持股資料損毀，已停用偏好寫入 */
 let loadError = null
@@ -49,7 +54,7 @@ rebalanceView.className = 'popup-view'
 
 root.append(normalView, rebalanceView)
 
-const table = createTable(normalView, { sort })
+const table = createTable(normalView, { sort, reorder })
 const rebalanceTable = createRebalanceTable()
 rebalanceView.append(rebalanceTable.element)
 const statusBar = createStatusBar(root)
@@ -59,12 +64,18 @@ function openEditPage() {
   window.close()
 }
 
+function shownRows() {
+  const quotes = new Map((batch?.quotes ?? []).map((quote) => [quote.code, quote]))
+  const rows = applyOrder(holdings, order).map((holding) => computePnlRow(holding, quotes.get(holding.code) ?? null))
+  return sortRows(rows, prefs.sortKey, prefs.sortDirection)
+}
+
 function render() {
   const quotes = new Map((batch?.quotes ?? []).map((quote) => [quote.code, quote]))
-  const rows = holdings.map((holding) => computePnlRow(holding, quotes.get(holding.code) ?? null))
+  const rows = shownRows()
 
   table.render({
-    rows: sortRows(rows, prefs.sortKey, prefs.sortDirection),
+    rows,
     totals: computeTotals(rows),
     sort: { key: prefs.sortKey, direction: prefs.sortDirection },
     mode: 'view',
@@ -91,6 +102,15 @@ function render() {
     error: loadError ?? fetchError,
     index: batch?.index ?? null,
   })
+}
+
+/** 拖曳排序：以目前畫面順序為基礎移動，結果存為手動排序 */
+function reorder(fromCode, toCode) {
+  order = moveCode(shownRows().map((row) => row.holding.code), fromCode, toCode)
+  prefs = { ...prefs, sortKey: 'manual' }
+  void saveOrder(order)
+  void savePrefs(prefs)
+  render()
 }
 
 function sort(key) {
@@ -154,6 +174,7 @@ function watchStorage() {
       }
     }
     if (changes[TARGETS_KEY] !== undefined) targets = parseTargets(changes[TARGETS_KEY].newValue)
+    if (changes[ORDER_KEY] !== undefined) order = parseOrder(changes[ORDER_KEY].newValue)
     if (changes[PREFS_KEY] !== undefined) {
       prefs = readPrefs(changes[PREFS_KEY].newValue)
       toolbar.setDisplay(prefs.returnDisplay)
@@ -170,6 +191,7 @@ async function main() {
   const loaded = await load()
   holdings = loaded.holdings
   targets = loaded.targets
+  order = loaded.order
   prefs = loaded.prefs
   batch = loaded.quotes
   loadError = loaded.error

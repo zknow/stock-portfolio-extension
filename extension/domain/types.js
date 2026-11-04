@@ -1,5 +1,6 @@
 /** 可排序的鍵。`marketValue` 不顯示於表格，但為預設排序鍵 */
 export const SORT_KEYS = [
+  'manual',
   'code',
   'name',
   'shares',
@@ -19,5 +20,5 @@ export const SORT_KEYS = [
  * 報價批次：`{ source, quotes, index, fetchedAt }`
  * 排序狀態：`{ key, direction }`
  * UI 偏好：`{ sortKey, sortDirection, returnDisplay, showCost, rebalance }`
- * 權重設定：`{ schemaVersion, cash, cashWeight, weights }`
+ * 權重設定：`{ schemaVersion, cash, weights }`
  */

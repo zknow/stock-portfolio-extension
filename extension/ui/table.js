@@ -1,4 +1,5 @@
 import { MISSING, directionOf, formatAmount, formatPrice, formatRate, formatShares } from '../domain/format.js'
+import { createDragHandle } from './rowDrag.js'
 
 /** 欄位順序即表格順序。成本欄位整組受 F17 的開關控制 */
 const IDENTITY_COLUMNS = [
@@ -106,6 +107,7 @@ export function defaultDirection(key) {
 
 /** 缺值一律排最後，不受升冪或降冪影響（F13） */
 export function sortRows(rows, key, direction) {
+  if (key === 'manual') return [...rows]
   const factor = direction === 'asc' ? 1 : -1
   const valueOf = SORT_VALUES[key]
 
@@ -243,7 +245,10 @@ function rowFor(row, edit, handlers, display, showCost) {
   const nameCell = cell('', '')
   nameCell.title = name
   nameCell.append(span(name, 'name-text'))
-  element.append(cell(code, ''), nameCell)
+  const codeCell = cell(code, '')
+  codeCell.prepend(createDragHandle((from, to) => handlers.reorder?.(from, to)))
+  element.dataset.code = code
+  element.append(codeCell, nameCell)
 
   if (edit.mode === 'edit') {
     element.append(editableCell(row, edit, handlers, 'shares'), editableCell(row, edit, handlers, 'averageCost'), actionsCell(row, edit, handlers))
@@ -281,6 +286,27 @@ function returnPairs(values, display, showCost) {
   return [total, today]
 }
 
+/** 編輯模式的現金列：金額輸入框，變更時交給 onChange 處理 */
+function cashRow({ value, disabled, onChange }) {
+  const element = document.createElement('tr')
+  element.className = 'cash-row'
+
+  const input = document.createElement('input')
+  input.type = 'number'
+  input.min = '0'
+  input.step = '1'
+  input.className = 'cash-input'
+  input.value = String(value)
+  input.disabled = disabled
+  input.addEventListener('change', () => onChange(input.value))
+
+  const amountCell = cell('', 'numeric')
+  amountCell.colSpan = 2
+  amountCell.append(input, document.createTextNode(' 元'))
+  element.append(cell('—', ''), cell('現金', ''), amountCell, cell('', 'actions'))
+  return element
+}
+
 export function createTable(host, handlers = {}) {
   let headers = []
   let shownDisplay = null
@@ -314,13 +340,9 @@ export function createTable(host, handlers = {}) {
       const th = document.createElement('th')
       if (NUMERIC_KEYS.has(column.key)) th.className = 'numeric'
 
-      if (mode === 'edit') {
-        th.textContent = column.label
-      } else {
-        const toggle = button(column.label, '')
-        toggle.addEventListener('click', () => handlers.sort?.(column.key))
-        th.append(toggle)
-      }
+      const toggle = button(column.label, '')
+      toggle.addEventListener('click', () => handlers.sort?.(column.key))
+      th.append(toggle)
 
       headRow.append(th)
       return { column, th }
@@ -380,7 +402,7 @@ export function createTable(host, handlers = {}) {
   }
 
   return {
-    render({ rows, totals: values, sort, mode, draft, error, display, showCost }) {
+    render({ rows, totals: values, sort, mode, draft, error, display, showCost, cash = null }) {
       if (shownDisplay !== display || shownShowCost !== showCost || shownMode !== mode) {
         buildHead(display, showCost, mode)
       }
@@ -393,11 +415,12 @@ export function createTable(host, handlers = {}) {
         }
       }
 
-      body.replaceChildren(
-        ...(rows.length === 0
+      const bodyRows =
+        rows.length === 0
           ? [emptyRow(mode, display, showCost)]
-          : rows.map((row) => rowFor(row, { mode, draft, error }, handlers, display, showCost))),
-      )
+          : rows.map((row) => rowFor(row, { mode, draft, error }, handlers, display, showCost))
+      if (mode === 'edit' && cash !== null) bodyRows.push(cashRow(cash))
+      body.replaceChildren(...bodyRows)
 
       totals.hidden = mode === 'edit'
       if (mode !== 'edit') renderTotals(values, display, showCost)

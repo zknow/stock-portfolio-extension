@@ -1,6 +1,7 @@
 import { formatWeight } from '../domain/format.js'
 import { WEIGHT_TOLERANCE } from '../domain/rebalance.js'
 import { defaultTargets } from '../data/storage.js'
+import { createDragHandle } from './rowDrag.js'
 
 function div(className) {
   const element = document.createElement('div')
@@ -28,10 +29,10 @@ function weightInput(value, disabled) {
 }
 
 /**
- * 權重設定表格：股票列加一列現金。`input` 只更新畫面，
+ * 權重設定表格：股票列加一列唯讀的現金。`input` 只更新畫面，
  * `change`（失焦或 Enter）才透過 `onChange` 儲存。
  */
-export function createWeightTable({ onChange }) {
+export function createWeightTable({ onChange, onReorder }) {
   const element = div('weight-view')
 
   const board = div('board')
@@ -79,7 +80,7 @@ export function createWeightTable({ onChange }) {
 
   const warning = document.createElement('p')
   warning.className = 'weight-warning'
-  warning.textContent = '股票＋現金權重需為 100%'
+  warning.textContent = '股票權重合計不可超過 100%'
   warning.hidden = true
 
   const errorText = document.createElement('p')
@@ -91,11 +92,11 @@ export function createWeightTable({ onChange }) {
   let holdings = []
   let targets = defaultTargets()
   let disabled = false
+  let cashWeightCell = null
 
   function readInputs() {
     let sum = 0
     for (const input of body.querySelectorAll('input[data-kind]')) {
-      if (input.dataset.kind === 'cash') continue
       const value = Number(input.value)
       sum += Number.isFinite(value) ? value : 0
     }
@@ -103,11 +104,13 @@ export function createWeightTable({ onChange }) {
   }
 
   function updateSum() {
-    const sum = readInputs()
-    sumText.textContent = formatWeight(sum)
-    const off = Math.abs(sum - 100) > WEIGHT_TOLERANCE
+    const stockSum = readInputs()
+    const cashWeight = Math.max(0, 100 - stockSum)
+    sumText.textContent = formatWeight(stockSum + cashWeight)
+    const off = stockSum > 100 + WEIGHT_TOLERANCE
     sumText.classList.toggle('alert', off)
     warning.hidden = !off
+    if (cashWeightCell !== null) cashWeightCell.textContent = formatWeight(cashWeight)
   }
 
   function showError(text) {
@@ -140,7 +143,10 @@ export function createWeightTable({ onChange }) {
 
   function stockRow(holding) {
     const row = document.createElement('tr')
-    row.append(cell(holding.code), cell(holding.name))
+    row.dataset.code = holding.code
+    const codeCell = cell(holding.code)
+    codeCell.prepend(createDragHandle((from, to) => onReorder?.(from, to)))
+    row.append(codeCell, cell(holding.name))
 
     const weightCell = cell('', 'numeric')
     const input = weightInput(targets.weights[holding.code] ?? 0, disabled)
@@ -164,60 +170,15 @@ export function createWeightTable({ onChange }) {
   function cashRow() {
     const row = document.createElement('tr')
     row.className = 'cash-row'
-    row.append(cell('—'))
+    row.append(cell('—'), cell('現金'))
 
-    const nameCell = cell('')
-    nameCell.append(document.createTextNode('現金 '))
-    const cashInput = document.createElement('input')
-    cashInput.type = 'number'
-    cashInput.min = '0'
-    cashInput.step = '1'
-    cashInput.className = 'cash-input'
-    cashInput.value = String(targets.cash)
-    cashInput.disabled = disabled
-    cashInput.dataset.kind = 'cash'
-    cashInput.addEventListener('change', () => {
-      const value = Number(cashInput.value)
-      if (cashInput.value === '' || !Number.isFinite(value) || value < 0) {
-        cashInput.value = String(targets.cash)
-        showError('現金金額必須是 0 以上的數字')
-        return
-      }
-      const normalized = Math.round(value)
-      cashInput.value = String(normalized)
-      targets.cash = normalized
-      clearError()
-      emit()
-    })
-    nameCell.append(cashInput, document.createTextNode(' 元'))
-    row.append(nameCell)
-
-    const weightCell = cell('', 'numeric')
-    const cashWeightInput = weightInput(targets.cashWeight, disabled)
-    cashWeightInput.dataset.kind = 'cashWeight'
-    cashWeightInput.addEventListener('input', updateSum)
-    cashWeightInput.addEventListener('change', () => {
-      const value = Number(cashWeightInput.value)
-      if (cashWeightInput.value === '' || !Number.isFinite(value) || value < 0 || value > 100) {
-        cashWeightInput.value = String(targets.cashWeight)
-        showError('目標權重必須是 0–100 的數字')
-        updateSum()
-        return
-      }
-      const normalized = Math.round(value * 10) / 10
-      cashWeightInput.value = String(normalized)
-      targets.cashWeight = normalized
-      clearError()
-      updateSum()
-      emit()
-    })
-    weightCell.append(cashWeightInput, document.createTextNode(' %'))
-    row.append(weightCell)
+    cashWeightCell = cell('', 'numeric')
+    row.append(cashWeightCell)
     return row
   }
 
   function render(next) {
-    holdings = [...next.holdings].sort((a, b) => a.code.localeCompare(b.code, 'zh-Hant'))
+    holdings = next.holdings
     targets = { ...next.targets, weights: { ...next.targets.weights } }
     disabled = next.disabled === true
     clearError()

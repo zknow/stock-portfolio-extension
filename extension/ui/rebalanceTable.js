@@ -65,7 +65,7 @@ function cashSuggestion(row) {
 
 function noteFor(result) {
   if (result.reason === 'missing-quotes') return `缺現價，無法計算：${result.missing.join('、')}`
-  if (result.reason === 'weight-sum') return `權重合計 ${formatWeight(result.weightSum)}，請調整為 100%`
+  if (result.reason === 'weight-sum') return `股票權重合計 ${formatWeight(result.stockWeightSum)}，不可超過 100%`
   if (result.reason === 'no-assets') return '總資產為 0，無法計算'
   return null
 }
@@ -177,7 +177,7 @@ export function createRebalanceTable() {
       pair(missing ? '總資產（已知）' : '總資產', `NT$${formatAmount(result.total)}`),
       pair('股票市值', `NT$${formatAmount(result.stockValue)}`),
       pair('現金', `NT$${formatAmount(result.cash)}`),
-      pair('權重合計', formatWeight(result.weightSum)),
+      pair('股票權重合計', formatWeight(result.stockWeightSum)),
     ]
     totals.replaceChildren(...parts, notes)
   }

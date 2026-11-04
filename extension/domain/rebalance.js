@@ -20,8 +20,6 @@ function quoteOf(quotes, code) {
 export function computeRebalance({ holdings, quotes, targets }) {
   const weights = targets?.weights ?? {}
   const cash = typeof targets?.cash === 'number' && Number.isFinite(targets.cash) ? targets.cash : 0
-  const cashWeight =
-    typeof targets?.cashWeight === 'number' && Number.isFinite(targets.cashWeight) ? targets.cashWeight : 0
 
   const sharesByCode = new Map(holdings.map((holding) => [holding.code, holding.shares]))
   const missing = []
@@ -66,14 +64,15 @@ export function computeRebalance({ holdings, quotes, targets }) {
   }
 
   const total = stockValue + cash
-  const weightSum = cashWeight + holdings.reduce((sum, holding) => sum + (weights[holding.code] ?? 0), 0)
-  const configured = cashWeight > 0 || holdings.some((holding) => weights[holding.code] !== undefined)
+  const stockWeightSum = holdings.reduce((sum, holding) => sum + (weights[holding.code] ?? 0), 0)
+  const cashWeight = Math.max(0, 100 - stockWeightSum)
+  const configured = holdings.some((holding) => weights[holding.code] !== undefined)
 
   let reason = null
   if (holdings.length === 0 && cash <= 0) reason = 'no-assets'
   else if (missing.length > 0) reason = 'missing-quotes'
   else if (!configured) reason = 'no-weights'
-  else if (Math.abs(weightSum - 100) > WEIGHT_TOLERANCE) reason = 'weight-sum'
+  else if (stockWeightSum > 100 + WEIGHT_TOLERANCE) reason = 'weight-sum'
   else if (total <= 0) reason = 'no-assets'
 
   const ok = reason === null
@@ -121,7 +120,7 @@ export function computeRebalance({ holdings, quotes, targets }) {
   return {
     ok,
     reason,
-    weightSum,
+    stockWeightSum,
     total,
     stockValue,
     cash,
