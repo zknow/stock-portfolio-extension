@@ -17,7 +17,6 @@ export const DEFAULT_PREFS = {
   sortDirection: 'desc',
   returnDisplay: 'rate',
   showCost: true,
-  rebalance: false,
 }
 
 /** 權重資料預設值。`weights` 只存大於 0 的項目，0 視同未設定 */
@@ -86,7 +85,6 @@ export function readPrefs(value) {
     sortDirection: value.sortDirection === 'asc' ? 'asc' : 'desc',
     returnDisplay: value.returnDisplay === 'amount' ? 'amount' : 'rate',
     showCost: typeof value.showCost === 'boolean' ? value.showCost : DEFAULT_PREFS.showCost,
-    rebalance: typeof value.rebalance === 'boolean' ? value.rebalance : DEFAULT_PREFS.rebalance,
   }
 }
 
@@ -147,7 +145,6 @@ export async function savePrefs(prefs) {
       sortDirection: prefs.sortDirection,
       returnDisplay: prefs.returnDisplay,
       showCost: prefs.showCost,
-      rebalance: prefs.rebalance,
     },
   })
 }

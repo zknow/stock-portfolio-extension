@@ -31,6 +31,8 @@ let holdings = []
 let targets = defaultTargets()
 let order = []
 let prefs = { ...DEFAULT_PREFS }
+/** 再平衡檢視只存在本次開啟期間，重新開啟 popup 一律回到持股列表 */
+let rebalance = false
 /** 非 null 代表持股資料損毀，已停用偏好寫入 */
 let loadError = null
 let batch = null
@@ -90,8 +92,8 @@ function render() {
     loading: batch === null && fetchError === null,
   })
 
-  normalView.hidden = prefs.rebalance
-  rebalanceView.hidden = !prefs.rebalance
+  normalView.hidden = rebalance
+  rebalanceView.hidden = !rebalance
 
   toolbar.setTally(`共 ${rows.length} 檔`)
 
@@ -135,11 +137,10 @@ function setCost(showCost) {
   void savePrefs(prefs)
 }
 
-function setRebalance(rebalance) {
-  prefs = { ...prefs, rebalance }
-  toolbar.setRebalance(rebalance)
+function setRebalance(next) {
+  rebalance = next
+  toolbar.setRebalance(next)
   render()
-  void savePrefs(prefs)
 }
 
 /** 抓一次報價：開啟 popup 與按重整時各一次，沒有排程 */
@@ -179,7 +180,6 @@ function watchStorage() {
       prefs = readPrefs(changes[PREFS_KEY].newValue)
       toolbar.setDisplay(prefs.returnDisplay)
       toolbar.setCost(prefs.showCost)
-      toolbar.setRebalance(prefs.rebalance)
     }
     render()
   })
@@ -198,7 +198,6 @@ async function main() {
 
   toolbar.setDisplay(prefs.returnDisplay)
   toolbar.setCost(prefs.showCost)
-  toolbar.setRebalance(prefs.rebalance)
   render()
 
   await refresh()

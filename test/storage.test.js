@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { DEFAULT_PREFS, defaultTargets, parseOrder, parseTargets, readPrefs } from '../extension/data/storage.js'
+import { defaultTargets, parseOrder, parseTargets, readPrefs } from '../extension/data/storage.js'
 
 test('parseTargets 對非物件回預設', () => {
   assert.deepEqual(parseTargets(null), defaultTargets())
@@ -38,8 +38,6 @@ test('parseOrder 略過非法與重複的代號', () => {
   assert.deepEqual(parseOrder('x'), [])
 })
 
-test('readPrefs 的再平衡開關', () => {
-  assert.equal(DEFAULT_PREFS.rebalance, false)
-  assert.equal(readPrefs({ rebalance: true }).rebalance, true)
-  assert.equal(readPrefs({ rebalance: 'true' }).rebalance, false)
+test('readPrefs 不保留再平衡檢視', () => {
+  assert.equal(readPrefs({ rebalance: true }).rebalance, undefined)
 })
